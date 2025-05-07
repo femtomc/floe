@@ -30,19 +30,6 @@ struct ArrayLike:
         )
 
 
-alias Interpreter = StagingInterpreter
-
-
-fn maybe_find_interpreter(
-    vs: List[ArrayLike],
-) -> Optional[Interpreter]:
-    for v in vs:
-        var val = v[].val()
-        if val.isa[ExprTracer]():
-            return val[ExprTracer].interpreter
-    return None
-
-
 trait Primitive(Writable):
     fn abs(
         self,
@@ -136,17 +123,6 @@ struct Var(EqualityComparable, Hashable, Writable):
 
     fn write_to[W: Writer](self, mut writer: W):
         writer.write("%", self.id, ":", self.aval)
-
-
-@value
-struct Atom(Writable):
-    var v: Variant[Float32, Var]
-
-    fn write_to[W: Writer](self, mut writer: W):
-        if self.v.isa[Float32]():
-            return writer.write(self.v[Float32])
-        elif self.v.isa[Var]():
-            return writer.write(self.v[Var])
 
 
 @value
@@ -347,12 +323,25 @@ fn staging_interpreter() -> StagingInterpreter:
     return StagingInterpreter(ptr)
 
 
+alias Interpreter = StagingInterpreter
+
+
+fn maybe_find_interpreter(
+    vs: List[ArrayLike],
+) -> Optional[Interpreter]:
+    for v in vs:
+        var val = v[].val()
+        if val.isa[ExprTracer]():
+            return val[ExprTracer].interpreter
+    return None
+
+
 fn stage1[
     f: fn (ArrayLike) raises -> ArrayLike
 ](x: ArrayLike,) raises -> Expr:
-    var interp = staging_interpreter()
-    var v = interp.wrap(x)
-    var out = f(v)
+    interp = staging_interpreter()
+    v = interp.wrap(x)
+    out = f(v)
     var expr = Expr(
         List[Var](interp.get_var(v)),
         interp.ptr[].equations,
@@ -361,7 +350,7 @@ fn stage1[
     return expr
 
 
-def array(v: Float32) -> ArrayLike:
+fn array(v: Float32) -> ArrayLike:
     return ArrayLike(v)
 
 
