@@ -2,31 +2,45 @@ from utils import Variant
 from collections import Dict
 from memory import ArcPointer
 from max.tensor import Tensor
+from layout import Layout
 
 
 @value
-struct ArrayLike:
-    var v: Variant[Float32, ExprTracer]
+struct STensor:
+    var aval: AbstractValue
+
+
+@value
+struct Failed:
+    var aval: AbstractValue
+
+
+alias _TensorLike = Variant[STensor, ExprTracer, Failed]
+
+
+@value
+struct TensorLike:
+    var v: _TensorLike
 
     fn aval(self) -> AbstractValue:
         if self.v.isa[ExprTracer]():
             return aval(self.v[ExprTracer])
         else:
-            return aval(self.v[Float32])
+            return aval(self.v[STensor])
 
-    fn val(self) -> Variant[Float32, ExprTracer]:
+    fn val(self) -> _TensorLike:
         return self.v
 
-    def __add__(self: ArrayLike, v: ArrayLike) -> ArrayLike:
+    fn __add__(self: TensorLike, v: TensorLike) -> TensorLike:
         return bind(
             Add,
-            List[ArrayLike](self, v),
+            List[TensorLike](self, v),
         )
 
-    def __mul__(self: ArrayLike, v: ArrayLike) -> ArrayLike:
+    fn __mul__(self: TensorLike, v: TensorLike) -> TensorLike:
         return bind(
             Mul,
-            List[ArrayLike](self, v),
+            List[TensorLike](self, v),
         )
 
 
@@ -40,12 +54,10 @@ trait Primitive(Writable):
 
 fn bind(
     prim: PrimSet,
-    args: List[ArrayLike],
-) raises -> ArrayLike:
+    args: List[TensorLike],
+) -> TensorLike:
     var interpreter = maybe_find_interpreter(args)
-    if interpreter:
-        return interpreter.value().interpret(prim, args)
-    raise Error()
+    return interpreter.value().interpret(prim, args)
 
 
 @value
@@ -167,10 +179,11 @@ fn dtype_str(dtype: DType) -> String:
 @value
 struct AbstractValue(Writable):
     var dtype: DType
-    var shape: Variant[Tuple[], Tuple[Int]]
+    var layout: Layout
 
     fn write_to[W: Writer](self, mut writer: W):
         writer.write(dtype_str(self.dtype))
+        writer.write("[", self.layout, "]")
 
 
 @value
@@ -203,19 +216,19 @@ struct ExprState:
     var tracer_to_var: Dict[Int, Var]
 
 
-fn aval(x: Float32) -> AbstractValue:
-    return AbstractValue(DType.float32, ())
+fn aval(x: STensor) -> AbstractValue:
+    return x.aval
 
 
 fn aval(x: ExprTracer) -> AbstractValue:
     return x.aval
 
 
-fn aval(x: ArrayLike) -> AbstractValue:
+fn aval(x: TensorLike) -> AbstractValue:
     return x.aval()
 
 
-fn aval(xs: List[ArrayLike]) -> List[AbstractValue]:
+fn aval(xs: List[TensorLike]) -> List[AbstractValue]:
     vs = List[AbstractValue]()
     for x in xs:
         vs.append(aval(x[]))
@@ -238,21 +251,21 @@ struct StagingInterpreter:
         self.ptr[].var_counter += 1
         return expr_tracer
 
-    fn lift(mut self, v: Float32) -> ExprTracer:
+    fn lift(mut self, v: STensor) -> ExprTracer:
         return self.pure(v)
 
-    fn wrap(self, v: Float32) -> ArrayLike:
+    fn wrap(self, v: STensor) -> TensorLike:
         var expr_tracer = self.pure(v)
         _ = self.add_var(expr_tracer)
-        return ArrayLike(expr_tracer)
+        return TensorLike(expr_tracer)
 
-    fn wrap(self, v: ExprTracer) -> ArrayLike:
-        return ArrayLike(v)
+    fn wrap(self, v: ExprTracer) -> TensorLike:
+        return TensorLike(v)
 
-    fn wrap(self, v: ArrayLike) -> ArrayLike:
+    fn wrap(self, v: TensorLike) -> TensorLike:
         var val = v.val()
-        if val.isa[Float32]():
-            return self.wrap(val[Float32])
+        if val.isa[STensor]():
+            return self.wrap(val[STensor])
         else:
             return self.wrap(val[ExprTracer])
 
@@ -261,39 +274,47 @@ struct StagingInterpreter:
         self.ptr[].tracer_to_var[id(tracer)] = v
         return v
 
-    fn get_var(self, tracer: ExprTracer) raises -> Var:
-        return self.ptr[].tracer_to_var[id(tracer)]
+    fn get_var(self, tracer: ExprTracer) -> Optional[Var]:
+        return self.ptr[].tracer_to_var.find(id(tracer))
 
-    fn get_var(self, tracers: List[ExprTracer]) raises -> List[Var]:
+    fn get_var(self, tracers: List[ExprTracer]) -> Optional[List[Var]]:
         var vs = List[Var]()
         for tracer in tracers:
-            vs.append(self.get_var(tracer[]))
-        return vs
+            var v = self.get_var(tracer[])
+            if v:
+                vs.append(v.value())
+            else:
+                return None
+        return Optional(vs)
 
-    fn get_var(self, array_like: ArrayLike) raises -> Var:
+    fn get_var(self, array_like: TensorLike) -> Optional[Var]:
         var val = array_like.val()
         return self.get_var(val[ExprTracer])
 
-    fn get_var(self, *tracers: ArrayLike) raises -> List[Var]:
+    fn get_var(self, *tracers: TensorLike) -> Optional[List[Var]]:
         vs = List[Var]()
         for tracer in tracers:
-            vs.append(self.get_var(tracer[]))
-        return vs
+            var v = self.get_var(tracer[])
+            if v:
+                vs.append(v.value())
+            else:
+                return None
+        return Optional(vs)
 
     fn pure(self, v: ExprTracer) -> ExprTracer:
         return v
 
-    fn pure(self, v: Float32) -> ExprTracer:
+    fn pure(self, v: STensor) -> ExprTracer:
         return self.lift(aval(v))
 
-    fn pure(self, v: ArrayLike) -> ExprTracer:
+    fn pure(self, v: TensorLike) -> ExprTracer:
         var val = v.val()
-        if val.isa[Float32]():
-            return self.pure(val[Float32])
+        if val.isa[STensor]():
+            return self.pure(val[STensor])
         else:
             return self.pure(val[ExprTracer])
 
-    fn pure(self, xs: List[ArrayLike]) -> List[ExprTracer]:
+    fn pure(self, xs: List[TensorLike]) -> List[ExprTracer]:
         vs = List[ExprTracer]()
         for x in xs:
             vs.append(self.pure(x[]))
@@ -302,16 +323,19 @@ struct StagingInterpreter:
     fn interpret(
         mut self,
         prim: PrimSet,
-        tracers: List[ArrayLike],
-    ) raises -> ArrayLike:
+        tracers: List[TensorLike],
+    ) -> TensorLike:
         expr_tracers = self.pure(tracers)
         avals_in = aval(tracers)
         aval_out = prim.abs(avals_in)
         out_tracer = self.lift(aval_out)
-        invars = self.get_var(expr_tracers)
-        outvar = self.add_var(out_tracer)
-        self.ptr[].equations.append(Eqn(prim, invars, outvar))
-        return ArrayLike(out_tracer)
+        var invars = self.get_var(expr_tracers)
+        if invars:
+            outvar = self.add_var(out_tracer)
+            self.ptr[].equations.append(Eqn(prim, invars.value(), outvar))
+            return TensorLike(out_tracer)
+        else:
+            return TensorLike(Failed(aval_out))
 
 
 fn staging_interpreter() -> StagingInterpreter:
@@ -327,7 +351,7 @@ alias Interpreter = StagingInterpreter
 
 
 fn maybe_find_interpreter(
-    vs: List[ArrayLike],
+    vs: List[TensorLike],
 ) -> Optional[Interpreter]:
     for v in vs:
         var val = v[].val()
@@ -337,26 +361,37 @@ fn maybe_find_interpreter(
 
 
 fn stage1[
-    f: fn (ArrayLike) raises -> ArrayLike
-](x: ArrayLike,) raises -> Expr:
+    f: fn (TensorLike) -> TensorLike
+](x: TensorLike,) -> Optional[Expr]:
     interp = staging_interpreter()
     v = interp.wrap(x)
     out = f(v)
-    var expr = Expr(
-        List[Var](interp.get_var(v)),
-        interp.ptr[].equations,
-        interp.get_var(out),
-    )
-    return expr
+    var inval = interp.get_var(v)
+    var outvar = interp.get_var(out)
+    if inval and outvar:
+        var expr = Expr(
+            List[Var](inval.value()),
+            interp.ptr[].equations,
+            outvar.value(),
+        )
+        return Optional(expr)
+    else:
+        return None
 
 
-fn array(v: Float32) -> ArrayLike:
-    return ArrayLike(v)
+fn tensor[dtype: DType, layout: Layout]() -> TensorLike:
+    alias absval = AbstractValue(dtype, layout)
+    return TensorLike(STensor(absval))
 
 
 def main():
-    def f(x: ArrayLike) -> ArrayLike:
+    fn f(x: TensorLike) -> TensorLike:
         return x + x + x * x
 
-    var expr = stage1[f](array(3.0))
-    print(expr)
+    alias expr = stage1[f](
+        tensor[
+            DType.float32,
+            Layout.col_major(3, 4),
+        ]()
+    )
+    print(expr.value())
