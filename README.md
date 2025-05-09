@@ -43,3 +43,5 @@ which prints the simple first-order DSL program:
   %3:f32[((3, 4):(1, 3))] = add %1 %2
   return %3 }
 ```
+
+Note that this program is in a functional style (closely following JAX). Kernel DSLs do not look like this (they support mutable writes via "reference" or thread primitives). The author is thinking about this next.
