@@ -23,7 +23,7 @@ Here's the MVP (aim high!) concrete goal the author has set for himself:
 At `comptime`, able to do the following:
 
 ```mojo
-fn f(x: TensorLike) -> TensorLike:
+fn f(x: Tensor) -> Tensor:
     return x + x + x * x
 
 alias expr = stage1[f](
