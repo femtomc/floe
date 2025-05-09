@@ -15,8 +15,8 @@ To answer this question, the author is roughly following this set of steps:
 * Encode a "JAX-like" `Expr` representation _at comptime_ in Mojo. Write a tracing process that allows for construction of this representation out of `Mojo` `fn` types.
 * Extend the abstract lattice that JAX presents (`dtype` and `shape`) with "richer" information (reflecting underlying tensor information like layouts).
 
-Here's the first concrete goal the author has set for himself:
-* Express matmul as a program in the staged DSL, and differentiate it (aim high!)
+Here's the MVP (aim high!) concrete goal the author has set for himself:
+* Express matmul as a program in the staged DSL, and differentiate it.
 
 ## Where we're at
 
