@@ -15,12 +15,12 @@ struct Failed:
     var aval: AbstractValue
 
 
-alias _TensorLike = Variant[STensor, ExprTracer, Failed]
+alias _Tens = Variant[STensor, ExprTracer, Failed]
 
 
 @value
-struct TensorLike:
-    var v: _TensorLike
+struct Tens:
+    var v: _Tens
 
     fn aval(self) -> AbstractValue:
         if self.v.isa[ExprTracer]():
@@ -28,19 +28,19 @@ struct TensorLike:
         else:
             return aval(self.v[STensor])
 
-    fn val(self) -> _TensorLike:
+    fn val(self) -> _Tens:
         return self.v
 
-    fn __add__(self: TensorLike, v: TensorLike) -> TensorLike:
+    fn __add__(self: Tens, v: Tens) -> Tens:
         return bind(
             Add,
-            List[TensorLike](self, v),
+            List[Tens](self, v),
         )
 
-    fn __mul__(self: TensorLike, v: TensorLike) -> TensorLike:
+    fn __mul__(self: Tens, v: Tens) -> Tens:
         return bind(
             Mul,
-            List[TensorLike](self, v),
+            List[Tens](self, v),
         )
 
 
@@ -54,8 +54,8 @@ trait Primitive(Writable):
 
 fn bind(
     prim: PrimSet,
-    args: List[TensorLike],
-) -> TensorLike:
+    args: List[Tens],
+) -> Tens:
     var interpreter = maybe_find_interpreter(args)
     return interpreter.value().interpret(prim, args)
 
@@ -224,11 +224,11 @@ fn aval(x: ExprTracer) -> AbstractValue:
     return x.aval
 
 
-fn aval(x: TensorLike) -> AbstractValue:
+fn aval(x: Tens) -> AbstractValue:
     return x.aval()
 
 
-fn aval(xs: List[TensorLike]) -> List[AbstractValue]:
+fn aval(xs: List[Tens]) -> List[AbstractValue]:
     vs = List[AbstractValue]()
     for x in xs:
         vs.append(aval(x[]))
@@ -254,15 +254,15 @@ struct StagingInterpreter:
     fn lift(mut self, v: STensor) -> ExprTracer:
         return self.pure(v)
 
-    fn wrap(self, v: STensor) -> TensorLike:
+    fn wrap(self, v: STensor) -> Tens:
         var expr_tracer = self.pure(v)
         _ = self.add_var(expr_tracer)
-        return TensorLike(expr_tracer)
+        return Tens(expr_tracer)
 
-    fn wrap(self, v: ExprTracer) -> TensorLike:
-        return TensorLike(v)
+    fn wrap(self, v: ExprTracer) -> Tens:
+        return Tens(v)
 
-    fn wrap(self, v: TensorLike) -> TensorLike:
+    fn wrap(self, v: Tens) -> Tens:
         var val = v.val()
         if val.isa[STensor]():
             return self.wrap(val[STensor])
@@ -287,11 +287,11 @@ struct StagingInterpreter:
                 return None
         return Optional(vs)
 
-    fn get_var(self, array_like: TensorLike) -> Optional[Var]:
+    fn get_var(self, array_like: Tens) -> Optional[Var]:
         var val = array_like.val()
         return self.get_var(val[ExprTracer])
 
-    fn get_var(self, *tracers: TensorLike) -> Optional[List[Var]]:
+    fn get_var(self, *tracers: Tens) -> Optional[List[Var]]:
         vs = List[Var]()
         for tracer in tracers:
             var v = self.get_var(tracer[])
@@ -307,14 +307,14 @@ struct StagingInterpreter:
     fn pure(self, v: STensor) -> ExprTracer:
         return self.lift(aval(v))
 
-    fn pure(self, v: TensorLike) -> ExprTracer:
+    fn pure(self, v: Tens) -> ExprTracer:
         var val = v.val()
         if val.isa[STensor]():
             return self.pure(val[STensor])
         else:
             return self.pure(val[ExprTracer])
 
-    fn pure(self, xs: List[TensorLike]) -> List[ExprTracer]:
+    fn pure(self, xs: List[Tens]) -> List[ExprTracer]:
         vs = List[ExprTracer]()
         for x in xs:
             vs.append(self.pure(x[]))
@@ -323,8 +323,8 @@ struct StagingInterpreter:
     fn interpret(
         mut self,
         prim: PrimSet,
-        tracers: List[TensorLike],
-    ) -> TensorLike:
+        tracers: List[Tens],
+    ) -> Tens:
         expr_tracers = self.pure(tracers)
         avals_in = aval(tracers)
         aval_out = prim.abs(avals_in)
@@ -333,9 +333,9 @@ struct StagingInterpreter:
         if invars:
             outvar = self.add_var(out_tracer)
             self.ptr[].equations.append(Eqn(prim, invars.value(), outvar))
-            return TensorLike(out_tracer)
+            return Tens(out_tracer)
         else:
-            return TensorLike(Failed(aval_out))
+            return Tens(Failed(aval_out))
 
 
 fn staging_interpreter() -> StagingInterpreter:
@@ -351,7 +351,7 @@ alias Interpreter = StagingInterpreter
 
 
 fn maybe_find_interpreter(
-    vs: List[TensorLike],
+    vs: List[Tens],
 ) -> Optional[Interpreter]:
     for v in vs:
         var val = v[].val()
@@ -361,8 +361,8 @@ fn maybe_find_interpreter(
 
 
 fn stage1[
-    f: fn (TensorLike) -> TensorLike
-](x: TensorLike,) -> Optional[Expr]:
+    f: fn (Tens) -> Tens
+](x: Tens,) -> Optional[Expr]:
     interp = staging_interpreter()
     v = interp.wrap(x)
     out = f(v)
@@ -379,17 +379,17 @@ fn stage1[
         return None
 
 
-fn tensor[dtype: DType, layout: Layout]() -> TensorLike:
+fn tens[dtype: DType, layout: Layout]() -> Tens:
     alias absval = AbstractValue(dtype, layout)
-    return TensorLike(STensor(absval))
+    return Tens(STensor(absval))
 
 
 def main():
-    fn f(x: TensorLike) -> TensorLike:
+    fn f(x: Tens) -> Tens:
         return x + x + x * x
 
     alias expr = stage1[f](
-        tensor[
+        tens[
             DType.float32,
             Layout.col_major(3, 4),
         ]()
