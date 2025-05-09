@@ -18,7 +18,7 @@ To answer this question, the author is roughly following this set of steps:
 Here's the first concrete goal the author has set for himself:
 * Express matmul as a program in the staged DSL, and differentiate it (aim high!)
 
-## Where I'm at:
+## Where we're at
 
 At `comptime`, able to do the following:
 
