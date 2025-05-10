@@ -1,7 +1,7 @@
 from utils import Variant
 from collections import Dict
 from memory import ArcPointer
-from layout import Layout
+from layout import Layout, LayoutTensor
 
 
 @value
@@ -214,6 +214,12 @@ fn aval(x: STensor) -> AbstractValue:
     return x.aval
 
 
+fn aval[
+    dtype: DType, layout: Layout
+](x: LayoutTensor[dtype, layout]) -> AbstractValue:
+    return AbstractValue(dtype, layout)
+
+
 fn aval(x: ExprTracer) -> AbstractValue:
     return x.aval
 
@@ -356,9 +362,10 @@ fn maybe_find_interpreter(
 
 fn stage1[
     f: fn (Tensor) raises -> Tensor
-](x: Tensor,) -> Optional[Expr]:
+](x: LayoutTensor,) -> Optional[Expr]:
     interp = staging_interpreter()
-    v = interp.wrap(x)
+    var x_ = STensor(AbstractValue(x.dtype, x.layout))
+    v = interp.wrap(x_)
     try:
         out = f(v)
         var inval = interp.get_var(v)
@@ -378,12 +385,23 @@ fn tensor[dtype: DType, layout: Layout]() -> Tensor:
     return Tensor(STensor(absval))
 
 
+fn ones[
+    dtype: DType,
+    layout: Layout,
+]() -> LayoutTensor[dtype, layout, ImmutableAnyOrigin]:
+    alias storage = InlineArray[Scalar[dtype], layout.size()](
+        fill=1.0,
+    )
+    alias tens = LayoutTensor[dtype, layout](storage)
+    return tens
+
+
 def main():
-    fn f(x: Tensor) raises -> Tensor:
+    def f(x: Tensor) -> Tensor:
         return x + x + x * x
 
     alias expr = stage1[f](
-        tensor[
+        ones[
             DType.float32,
             Layout.col_major(3, 4),
         ]()
