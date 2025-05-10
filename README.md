@@ -20,7 +20,7 @@ Here's the MVP (aim high!) concrete goal the author has set for himself:
 
 ## Where we're at
 
-At `comptime`, able to do the following:
+At compile time, able to do the following:
 
 ```mojo
 fn f(x: Tensor) -> Tensor:
