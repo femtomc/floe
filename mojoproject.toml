@@ -9,4 +9,4 @@ version = "0.1.0"
 format = "mojo format ."
 
 [dependencies]
-max = "*"
+max-pipelines = ">=25.4.0.dev2025050919,<26"

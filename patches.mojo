@@ -9,12 +9,7 @@ struct STensor:
     var aval: AbstractValue
 
 
-@value
-struct Failed:
-    var aval: AbstractValue
-
-
-alias _Tens = Variant[STensor, ExprTracer, Failed]
+alias _Tens = Variant[STensor, ExprTracer]
 
 
 @value
@@ -30,13 +25,13 @@ struct Tensor:
     fn val(self) -> _Tens:
         return self.v
 
-    fn __add__(self: Tensor, v: Tensor) -> Tensor:
+    fn __add__(self: Tensor, v: Tensor) raises -> Tensor:
         return bind(
             Add,
             List[Tensor](self, v),
         )
 
-    fn __mul__(self: Tensor, v: Tensor) -> Tensor:
+    fn __mul__(self: Tensor, v: Tensor) raises -> Tensor:
         return bind(
             Mul,
             List[Tensor](self, v),
@@ -54,7 +49,7 @@ trait Primitive(Writable):
 fn bind(
     prim: PrimSet,
     args: List[Tensor],
-) -> Tensor:
+) raises -> Tensor:
     var interpreter = maybe_find_interpreter(args)
     return interpreter.value().interpret(prim, args)
 
@@ -323,7 +318,7 @@ struct StagingInterpreter:
         mut self,
         prim: PrimSet,
         tracers: List[Tensor],
-    ) -> Tensor:
+    ) raises -> Tensor:
         expr_tracers = self.pure(tracers)
         avals_in = aval(tracers)
         aval_out = prim.abs(avals_in)
@@ -334,7 +329,7 @@ struct StagingInterpreter:
             self.ptr[].equations.append(Eqn(prim, invars.value(), outvar))
             return Tensor(out_tracer)
         else:
-            return Tensor(Failed(aval_out))
+            raise Error()
 
 
 fn staging_interpreter() -> StagingInterpreter:
@@ -360,21 +355,21 @@ fn maybe_find_interpreter(
 
 
 fn stage1[
-    f: fn (Tensor) -> Tensor
+    f: fn (Tensor) raises -> Tensor
 ](x: Tensor,) -> Optional[Expr]:
     interp = staging_interpreter()
     v = interp.wrap(x)
-    out = f(v)
-    var inval = interp.get_var(v)
-    var outvar = interp.get_var(out)
-    if inval and outvar:
+    try:
+        out = f(v)
+        var inval = interp.get_var(v)
+        var outvar = interp.get_var(out)
         var expr = Expr(
             List[Var](inval.value()),
             interp.ptr[].equations,
             outvar.value(),
         )
         return Optional(expr)
-    else:
+    except:
         return None
 
 
@@ -384,7 +379,7 @@ fn tensor[dtype: DType, layout: Layout]() -> Tensor:
 
 
 def main():
-    fn f(x: Tensor) -> Tensor:
+    fn f(x: Tensor) raises -> Tensor:
         return x + x + x * x
 
     alias expr = stage1[f](
