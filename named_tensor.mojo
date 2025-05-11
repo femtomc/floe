@@ -66,6 +66,6 @@ fn remove[
 fn main():
     var v = f32[
         names = List[String]("x", "y"),
-        layout = Layout.col_major(10, 10),
+        layout = Layout.col_major(20, 20),
     ].ones().sum["x"]()
     print(v)

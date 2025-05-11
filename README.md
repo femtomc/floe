@@ -2,7 +2,8 @@
 <img style="width:300px;max-width:300px;" src="./logo.png"/>
 </p>
 
-`patches` is an experiment (first and foremost) - don't use it!
+`patches` is an experiment (first and foremost) - don't use it! Author is
+futzing around with ideas from array programming frameworks, and Mojo.
 
 ## Goals
 
