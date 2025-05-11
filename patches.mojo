@@ -1,6 +1,6 @@
 from utils import Variant
 from collections import Dict
-from memory import ArcPointer
+from memory import ArcPointer, UnsafePointer
 from layout import Layout, LayoutTensor
 
 
@@ -388,20 +388,16 @@ fn tensor[dtype: DType, layout: Layout]() -> Tensor:
 fn ones[
     dtype: DType,
     layout: Layout,
-]() -> LayoutTensor[dtype, layout, ImmutableAnyOrigin]:
-    alias storage = InlineArray[Scalar[dtype], layout.size()](
-        fill=1.0,
-    )
-    alias tens = LayoutTensor[dtype, layout](storage)
-    return tens
+]() -> LayoutTensor[dtype, layout, MutableAnyOrigin]:
+    return LayoutTensor[dtype, layout, MutableAnyOrigin](
+        UnsafePointer[Scalar[dtype], alignment=64].alloc(layout.size())
+    ).fill(1.0)
 
 
 def main():
     def f(x: Tensor) -> Tensor:
         def g(x: Tensor) -> Tensor:
             return x * x
-
-        return vmap[g, axis="v"](x)
 
         return g(x + x + x * x)
 
