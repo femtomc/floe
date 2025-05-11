@@ -398,7 +398,12 @@ fn ones[
 
 def main():
     def f(x: Tensor) -> Tensor:
-        return x + x + x * x
+        def g(x: Tensor) -> Tensor:
+            return x * x
+
+        return vmap[g, axis="v"](x)
+
+        return g(x + x + x * x)
 
     alias expr = stage1[f](
         ones[
