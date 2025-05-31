@@ -210,5 +210,5 @@ code which can interact with some external MLIR compiler), but it's also nice
 because Pallas uses the programmatic representation to extend
 [some of JAX's automation to Pallas kernels](https://docs.jax.dev/en/latest/pallas/design/design.html#transforming-pallas).
 
-### 05/11/2025 (Break to write paper)
+### 05/11/2025 - TBD (Break to write paper)
 Author is working on another project.
